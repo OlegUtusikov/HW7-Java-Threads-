@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="info.kgeorgiy.java.advanced.base">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/src/info.kgeorgiy.java.advanced.base.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
