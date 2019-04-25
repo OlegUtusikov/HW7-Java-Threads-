@@ -13,5 +13,6 @@
     <orderEntry type="library" name="jsoup-1.8.1" level="project" />
     <orderEntry type="library" name="junit-4.11" level="project" />
     <orderEntry type="library" name="quickcheck-0.6" level="project" />
+    <orderEntry type="library" name="info.kgeorgiy.java.advanced.mapper" level="project" />
   </component>
 </module>
