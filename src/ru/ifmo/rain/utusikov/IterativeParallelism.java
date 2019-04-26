@@ -1,156 +1,188 @@
 package ru.ifmo.rain.utusikov;
 
 import info.kgeorgiy.java.advanced.concurrent.ListIP;
-import info.kgeorgiy.java.advanced.concurrent.ScalarIP;
 import info.kgeorgiy.java.advanced.mapper.ParallelMapper;
-import org.jsoup.select.Collector;
 
 import java.util.*;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-public  class IterativeParallelism implements ListIP {
-    ParallelMapper parallelMapper;
-    IterativeParallelism() {
-        parallelMapper = null;
-    }
+public class IterativeParallelism implements ListIP {
+    private ParallelMapper mapper;
 
-    IterativeParallelism(ParallelMapper parallelMapper) {
-        this.parallelMapper = parallelMapper;
+    /**
+     * Default constructor.
+     * Threads will create for each call methods.
+     */
+    public IterativeParallelism() {
+        mapper = null;
     }
 
     /**
+     * Constructor this thread pool.
+     * Threads takes from {@code mapper} and doesn't create here.
      *
-     * @param i count of threads {@link Thread}
-     * @param list list of arguments {@link List}
-     * @param comparator comparator for T {@link Comparator}
-     * @param <T> tamplate parameter
-     * @return maximum list from list
-     * @throws InterruptedException when was error with threads
+     * @param mapper thread pool
      */
-    @Override
-    public <T> T maximum(int i, List<? extends T> list, Comparator<? super T> comparator) throws InterruptedException {
-        List<T> tmp = calc(i, list, stream -> stream.max(comparator).orElseThrow());
-        return tmp.stream().max(comparator).orElseThrow();
+    public IterativeParallelism(ParallelMapper mapper) {
+        this.mapper = mapper;
     }
 
-    /**
-     *
-     * @param i count of threads {@link Thread}
-     * @param list list of arguments {@link List}
-     * @param comparator comparator for T {@link Comparator}
-     * @param <T> template parameter
-     * @return minimum element from list
-     * @throws InterruptedException when was error with threads
-     */
-    @Override
-    public <T> T minimum(int i, List<? extends T> list, Comparator<? super T> comparator) throws InterruptedException {
-        return maximum(i, list, Collections.reverseOrder(comparator));
-    }
-
-    /**
-     *
-     * @param i count of threads {@link Thread}
-     * @param list list of arguments {@link List}
-     * @param predicate function wich compare element with conditional {@link Predicate}
-     * @param <T> template parameter
-     * @return true when all elements match with predicate
-     * @throws InterruptedException when was error with threads
-     */
-    @Override
-    public <T> boolean all(int i, List<? extends T> list, Predicate<? super T> predicate) throws InterruptedException {
-        List<Boolean> tmp = calc(i, list, stream -> stream.allMatch(predicate));
-        return tmp.stream().allMatch(bool -> bool);
-    }
-
-    /**
-     *
-     * @param i count of threads {@link Thread}
-     * @param list list of arguments {@link List}
-     * @param predicate function which match elem with conditional {@link Predicate}
-     * @param <T> template parameter
-     * @return true, when some element match with predicate
-     * @throws InterruptedException when was error with threads
-     */
-    @Override
-    public <T> boolean any(int i, List<? extends T> list, Predicate<? super T> predicate) throws InterruptedException {
-        return !all(i, list, predicate.negate());
-    }
-
-    /**
-     *
-     * @param i count of threads {@link Thread}
-     * @param list list of arguments {@link List}
-     * @return Joined list in String
-     * @throws InterruptedException when was error with threads
-     */
-    @Override
-    public String join(int i, List<?> list) throws InterruptedException {
-        List<String> tmp = calc(i, list, stream -> stream.map(Object::toString).collect(Collectors.joining()));
-        return String.join("", tmp);
-    }
-
-    /**
-     *
-     * @param i count of threads {@link Thread}
-     * @param list list of arguments {@link List}
-     * @param predicate return true when argument is good. {@link Predicate}
-     * @param <T> template parameter
-     * @return element which match with predicate function
-     * @throws InterruptedException when was error with threads
-     */
-    @Override
-    public <T> List<T> filter(int i, List<? extends T> list, Predicate<? super T> predicate) throws InterruptedException {
-        List<List<T>> tmp = calc(i, list, stream -> stream.filter(predicate).collect(Collectors.toList()));
-        return tmp.stream().flatMap(List::stream).collect(Collectors.toList());
-    }
-
-    /**
-     *
-     * @param i count of Threads {@link Thread}
-     * @param list list of arguments {@link List}
-     * @param function function wich map element from list {@link Function}
-     * @param <T>  template parameter
-     * @param <U>  template parameter
-     * @return List of mapped elements.
-     * @throws InterruptedException when was error with threads
-     */
-    @Override
-    public <T, U> List<U> map(int i, List<? extends T> list, Function<? super T, ? extends U> function) throws InterruptedException {
-        List<List<U>> tmp = calc(i, list, stream -> stream.map(function).collect(Collectors.toList()), function);
-        return tmp.stream().flatMap(List::stream).collect(Collectors.toList());
-    }
-
-    private <T, U, R> List<R> calc(int countOfThreads, List<T> list, Function<? extends Stream, R> func, Function<T, R> f) throws InterruptedException {
-        if (countOfThreads <= 0) {
-            throw new IllegalArgumentException("Count of threads mustn't be less zero!");
+    private <T> List<List<? extends T>> getSublists(int threads, List<? extends T> list) {
+        if (threads <= 0) {
+            throw new IllegalArgumentException("Count of threads should be >= 1, but was: " + threads);
         }
-        Objects.requireNonNull(list);
-        List<R> result = new ArrayList<>();
-        if (parallelMapper == null) {
-            countOfThreads = Math.max(1, Math.min(list.size(), countOfThreads));
-            result.addAll(Collections.nCopies(countOfThreads, null));
-            int mainPath = list.size() / countOfThreads;
-            int addPath = list.size() % countOfThreads;
-            List<Thread> threads = new ArrayList<>();
-            int l;
-            int r = 0;
-            for(int i = 0; i < countOfThreads; i++) {
-                l = r;
-                r = l + mainPath + (i < addPath ? 1 : 0);
-                List<T> sublist = list.subList(l, r);
-                int finalI = i;
-                threads.add(new Thread(() -> result.set(finalI, func.apply(sublist.stream()))));
-                threads.get(i).start();
-            }
-            for(Thread thread : threads) {
-                thread.join();
-            }
-        } else {
-            result.addAll(parallelMapper.map(f, list));
+        List<List<? extends T>> result = new ArrayList<>();
+        threads = Math.max(1, Math.min(list.size(), threads));
+        int mainPath = list.size() / threads;
+        int addPath = list.size() % threads;
+        int l;
+        int r = 0;
+        for(int i = 0; i < threads; i++) {
+            l = r;
+            r = Math.min(list.size(), l + mainPath + (i < addPath ? 1 : 0));
+            result.add(list.subList(l, r));
         }
         return result;
+    }
+
+    private <T, U, R> R result(int threads, List<? extends T> list,
+                               Function<List<? extends T>, ? extends U> func,
+                               Function<List<? extends U>, ? extends R> concat) throws InterruptedException {
+        var lists = getSublists(threads, list);
+        final List<U> result = new ArrayList<>();
+        List<Thread> workers = new ArrayList<>();
+        if (mapper == null) {
+            result.addAll(Collections.nCopies(lists.size(), null));
+            for(int i = 0; i < lists.size(); i++) {
+                final int finalI = i;
+                final var temp = lists.get(finalI);
+                workers.add(new Thread(() -> result.set(finalI, func.apply(temp))));
+                workers.get(finalI).start();
+            }
+            for(Thread thread : workers) {
+                try {
+                    thread.join();
+                }catch (InterruptedException ignored) {
+                }
+            }
+        } else {
+            result.addAll(mapper.map(func, lists));
+        }
+
+        return concat.apply(result);
+    }
+
+    /**
+     * Find and return maximum element by comparator
+     *
+     * @param threads    number or concurrent threads.
+     * @param values     values elements for checking.
+     * @param comparator value comparator.
+     * @param <T>        type of elements.
+     * @return maximum element
+     * @throws InterruptedException if threads error happened
+     */
+    @Override
+    public <T> T maximum(int threads, List<? extends T> values, Comparator<? super T> comparator) throws InterruptedException {
+        Function<List<? extends T>, ? extends T> max = (list) -> list.stream().max(comparator).orElse(null);
+        return result(threads, values, max, max);
+    }
+
+    /**
+     * Find and return minimum element by comparator
+     *
+     * @param threads    number or concurrent threads.
+     * @param values     values elements for checking.
+     * @param comparator value comparator.
+     * @param <T>        type of elements.
+     * @return minimum element
+     * @throws InterruptedException if threads error happened
+     */
+    @Override
+    public <T> T minimum(int threads, List<? extends T> values, Comparator<? super T> comparator) throws InterruptedException {
+        return maximum(threads, values, Collections.reverseOrder(comparator));
+    }
+
+    /**
+     * Check all elements for matching predicate
+     *
+     * @param threads   number or concurrent threads.
+     * @param values    {@link List} elements for checking
+     * @param predicate test predicate.
+     * @param <T>       type of elements
+     * @return true if any element of values match test predicate, otherwise false
+     * @throws InterruptedException if threads error happened
+     */
+    @Override
+    public <T> boolean all(int threads, List<? extends T> values, Predicate<? super T> predicate) throws InterruptedException {
+        return result(threads, values,
+                (list) -> list.stream().allMatch(predicate),
+                (list) -> list.stream().allMatch(b -> b));
+    }
+
+    /**
+     * Check elements for matching predicate
+     *
+     * @param threads   number or concurrent threads.
+     * @param values    {@link List} elements for checking
+     * @param predicate test predicate.
+     * @param <T>       type of elements
+     * @return true if any element of values match test predicate, otherwise false
+     * @throws InterruptedException if threads error happened
+     */
+    @Override
+    public <T> boolean any(int threads, List<? extends T> values, Predicate<? super T> predicate) throws InterruptedException {
+        return !all(threads, values, predicate.negate());
+    }
+
+    /**
+     * Concatenate string-value of all elements in list
+     *
+     * @param threads number or concurrent threads.
+     * @param values  {@link List} elements for joining.
+     * @return {@link String} contains all elements in list.
+     * @throws InterruptedException if threads error happened.
+     */
+    @Override
+    public String join(int threads, List<?> values) throws InterruptedException {
+        return result(threads, values,
+                (list) -> list.stream().map(Object::toString).collect(Collectors.joining()),
+                (list) -> String.join("", list));
+    }
+
+    /**
+     * Generate and return {@link List} of initial elements
+     * which satisfy the {@code predicate}.
+     *
+     * @param threads   number or concurrent threads.
+     * @param values    {@link List} elements for filtering.
+     * @param predicate condition for filtering.
+     * @param <T>       type of elements.
+     * @return {@link List} of initial elements which satisfy the {@code predicate}.
+     * @throws InterruptedException if threads error happened.
+     */
+    @Override
+    public <T> List<T> filter(int threads, List<? extends T> values, Predicate<? super T> predicate) throws InterruptedException {
+        return result(threads, values,
+                (list) -> list.stream().filter(predicate).collect(Collectors.toList()),
+                (list) -> list.stream().flatMap(List::stream).collect(Collectors.toList()));
+    }
+
+    /**
+     * @param threads number or concurrent threads.
+     * @param values  {@link List} elements for mapping.
+     * @param f       {@link Function} for mapping
+     * @param <T>     type of elements in {@code values}
+     * @param <U>     function result type
+     * @return {@link List} of initial elements which mapped by {@code f}.
+     * @throws InterruptedException if threads error happened
+     */
+    @Override
+    public <T, U> List<U> map(int threads, List<? extends T> values, Function<? super T, ? extends U> f) throws InterruptedException {
+        return result(threads, values,
+                (list) -> list.stream().map(f).collect(Collectors.toList()),
+                (list) -> list.stream().flatMap(List::stream).collect(Collectors.toList()));
     }
 }

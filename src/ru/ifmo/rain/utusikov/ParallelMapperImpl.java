@@ -4,12 +4,14 @@ import info.kgeorgiy.java.advanced.mapper.ParallelMapper;
 
 import java.util.*;
 import java.util.function.Function;
+
+import static java.lang.Thread.currentThread;
 import static java.lang.Thread.interrupted;
 import java.lang.Thread;
 
 public class ParallelMapperImpl implements ParallelMapper {
-    private List<Thread> threads;
-    private Queue<Work> works;
+    private final List<Thread> threads;
+    private final Queue<Work> works;
 
     public ParallelMapperImpl(int threads) {
         this.threads = new ArrayList<>();
@@ -17,10 +19,11 @@ public class ParallelMapperImpl implements ParallelMapper {
         for(int i = 0; i < threads; i++) {
             this.threads.add(new Thread(() -> {
                 try {
-                    while(!interrupted())
-                    exec();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    while(!interrupted()) {
+                        exec();
+                    }
+                } catch (InterruptedException ignored) {
+                    currentThread().interrupt();
                 }
             }));
             this.threads.get(i).start();
@@ -28,10 +31,10 @@ public class ParallelMapperImpl implements ParallelMapper {
     }
 
     private void exec() throws InterruptedException {
-        Work work = null;
+        Work work;
         synchronized (works) {
             while (works.isEmpty()) {
-                wait();
+                works.wait();
             }
             work = works.poll();
         }
@@ -41,7 +44,7 @@ public class ParallelMapperImpl implements ParallelMapper {
 
     @Override
     public <T, R> List<R> map(Function<? super T, ? extends R> function, List<? extends T> list) throws InterruptedException {
-        ParallelList<R> parallelList = new ParallelList<>();
+        ParallelList<R> parallelList = new ParallelList<>(Collections.nCopies(list.size(), null));
         for(int i = 0; i < list.size(); i++) {
             synchronized (works) {
                 int finalI = i;
@@ -58,8 +61,7 @@ public class ParallelMapperImpl implements ParallelMapper {
             thread.interrupt();
             try {
                 thread.join();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+            } catch (InterruptedException ignored) {
             }
         }
     }
@@ -75,14 +77,14 @@ public class ParallelMapperImpl implements ParallelMapper {
     }
 
     public class ParallelList<T> extends  AbstractList<T> {
-        private List<T> list;
+        private final List<T> list;
         private int completed = 0;
 
         public ParallelList() {
-            list = Collections.emptyList();
+            this(Collections.emptyList());
         }
 
-        public ParallelList(Collection<T> collection) {
+        ParallelList(Collection<T> collection) {
             list = new ArrayList<>(collection);
         }
 
@@ -97,9 +99,7 @@ public class ParallelMapperImpl implements ParallelMapper {
         }
 
         public T set(int index, T value) {
-            synchronized (this) {
-                list.set(index, value);
-            }
+            list.set(index, value);
             return list.get(index);
         }
 
