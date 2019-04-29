@@ -5,8 +5,8 @@ import info.kgeorgiy.java.advanced.mapper.ParallelMapper;
 import java.util.*;
 import java.util.function.Function;
 
-import static java.lang.Thread.currentThread;
 import static java.lang.Thread.interrupted;
+
 import java.lang.Thread;
 
 public class ParallelMapperImpl implements ParallelMapper {
@@ -16,14 +16,15 @@ public class ParallelMapperImpl implements ParallelMapper {
     public ParallelMapperImpl(int threads) {
         this.threads = new ArrayList<>();
         this.works = new ArrayDeque<>();
-        for(int i = 0; i < threads; i++) {
+        for (int i = 0; i < threads; i++) {
             this.threads.add(new Thread(() -> {
                 try {
-                    while(!interrupted()) {
+                    while (!interrupted()) {
                         exec();
                     }
                 } catch (InterruptedException ignored) {
-                    currentThread().interrupt();
+                } finally {
+                    Thread.currentThread().interrupt();
                 }
             }));
             this.threads.get(i).start();
@@ -45,7 +46,7 @@ public class ParallelMapperImpl implements ParallelMapper {
     @Override
     public <T, R> List<R> map(Function<? super T, ? extends R> function, List<? extends T> list) throws InterruptedException {
         ParallelList<R> parallelList = new ParallelList<>(Collections.nCopies(list.size(), null));
-        for(int i = 0; i < list.size(); i++) {
+        for (int i = 0; i < list.size(); i++) {
             synchronized (works) {
                 int finalI = i;
                 works.add(new Work(() -> parallelList.set(finalI, function.apply(list.get(finalI))), parallelList::inc));
@@ -57,8 +58,9 @@ public class ParallelMapperImpl implements ParallelMapper {
 
     @Override
     public void close() {
-        for(Thread thread : threads) {
-            thread.interrupt();
+
+        threads.forEach(Thread::interrupt);
+        for (Thread thread : threads) {
             try {
                 thread.join();
             } catch (InterruptedException ignored) {
@@ -76,7 +78,7 @@ public class ParallelMapperImpl implements ParallelMapper {
         }
     }
 
-    public class ParallelList<T> extends  AbstractList<T> {
+    public class ParallelList<T> extends AbstractList<T> {
         private final List<T> list;
         private int completed = 0;
 
@@ -98,6 +100,7 @@ public class ParallelMapperImpl implements ParallelMapper {
             return list.get(index);
         }
 
+        @Override
         public T set(int index, T value) {
             list.set(index, value);
             return list.get(index);
